@@ -33,7 +33,7 @@ class LoginFragment : Fragment() {
         container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
-        _binding = FragmentLoginBinding.inflate(layoutInflater, container, false)
+        _binding = FragmentLoginBinding.inflate(inflater, container, false)
         return binding.root
     }
 
@@ -43,50 +43,44 @@ class LoginFragment : Fragment() {
         binding.loginGithub.setOnClickListener { openLinkInBrowser(getString(R.string.github)) }
         binding.loginTelegram.setOnClickListener { openLinkInBrowser(getString(R.string.telegram)) }
 
-        val openDocumentLauncher =
-            registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-                if (uri != null) {
-                    try {
-                        val jsonString =
-                            requireActivity().contentResolver.openInputStream(uri)?.readBytes()
-                                ?: throw Exception("Error reading file")
-                        val name =
-                            DocumentFile.fromSingleUri(requireActivity(), uri)?.name ?: "settings"
-                        //.sani is encrypted, .ani is not
-                        if (name.endsWith(".sani")) {
-                            passwordAlertDialog { password ->
-                                if (password != null) {
+        val openDocumentLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            uri?.let {
+                try {
+                    val inputStream = requireActivity().contentResolver.openInputStream(it)
+                    val jsonString = inputStream?.readBytes() ?: throw Exception("Error reading file")
+                    val name = DocumentFile.fromSingleUri(requireActivity(), it)?.name ?: "settings"
+                    
+                    when {
+                        name.endsWith(".sani") -> passwordAlertDialog { password ->
+                            if (password != null) {
+                                try {
                                     val salt = jsonString.copyOfRange(0, 16)
                                     val encrypted = jsonString.copyOfRange(16, jsonString.size)
-                                    val decryptedJson = try {
-                                        PreferenceKeystore.decryptWithPassword(
-                                            password,
-                                            encrypted,
-                                            salt
-                                        )
-                                    } catch (e: Exception) {
-                                        toast(getString(R.string.incorrect_password))
-                                        return@passwordAlertDialog
-                                    }
-                                    if (PreferencePackager.unpack(decryptedJson))
+                                    val decryptedJson = PreferenceKeystore.decryptWithPassword(password, encrypted, salt)
+                                    if (PreferencePackager.unpack(decryptedJson)) {
                                         restartApp()
-                                } else {
-                                    toast(getString(R.string.password_cannot_be_empty))
+                                    }
+                                } catch (e: Exception) {
+                                    toast(getString(R.string.incorrect_password))
                                 }
+                            } else {
+                                toast(getString(R.string.password_cannot_be_empty))
                             }
-                        } else if (name.endsWith(".ani")) {
-                            val decryptedJson = jsonString.toString(Charsets.UTF_8)
-                            if (PreferencePackager.unpack(decryptedJson))
-                                restartApp()
-                        } else {
-                            toast(getString(R.string.unknown_file_type))
                         }
-                    } catch (e: Exception) {
-                        Logger.log(e)
-                        toast(getString(R.string.error_importing_settings))
+                        name.endsWith(".ani") -> {
+                            val decryptedJson = jsonString.toString(Charsets.UTF_8)
+                            if (PreferencePackager.unpack(decryptedJson)) {
+                                restartApp()
+                            }
+                        }
+                        else -> toast(getString(R.string.unknown_file_type))
                     }
+                } catch (e: Exception) {
+                    Logger.log(e)
+                    toast(getString(R.string.error_importing_settings))
                 }
             }
+        }
 
         binding.importSettingsButton.setOnClickListener {
             openDocumentLauncher.launch(arrayOf("*/*"))
@@ -116,12 +110,12 @@ class LoginFragment : Fragment() {
                 )
                 setOnClickListener {
                     val selection = userAgentTextBox.selectionEnd
-                    if (userAgentTextBox.transformationMethod == PasswordTransformationMethod.getInstance()) {
-                        userAgentTextBox.transformationMethod = null
+                    userAgentTextBox.transformationMethod = if (userAgentTextBox.transformationMethod == PasswordTransformationMethod.getInstance()) {
                         text = "👁️ ${getString(R.string.hide_password)}"
+                        null
                     } else {
-                        userAgentTextBox.transformationMethod = PasswordTransformationMethod.getInstance()
                         text = "👁️ ${getString(R.string.show_password)}"
+                        PasswordTransformationMethod.getInstance()
                     }
                     userAgentTextBox.setSelection(selection)
                 }
@@ -129,29 +123,32 @@ class LoginFragment : Fragment() {
             userAgentContainer.addView(showPasswordToggle)
         }
 
-        requireActivity().customAlertDialog().apply {
+        customAlertDialog().apply {
             setTitle(getString(R.string.enter_password))
             setCustomView(dialogView.root)
-            setPosButton(R.string.ok) {
-                val editText = dialogView.userAgentTextBox
-                if (editText.text?.isNotBlank() == true) {
-                    editText.text?.toString()?.trim()?.toCharArray(password)
-                    callback(password)
-                } else {
-                    toast(getString(R.string.password_cannot_be_empty))
+            setPositiveButton(getString(R.string.ok)) {
+                dialogView.userAgentTextBox.text?.toString()?.trim()?.let { text ->
+                    if (text.isNotBlank()) {
+                        text.toCharArray(password)
+                        callback(password)
+                    } else {
+                        toast(getString(R.string.password_cannot_be_empty))
+                    }
                 }
             }
-            setNegButton(R.string.cancel) {
+            setNegativeButton(getString(R.string.cancel)) {
                 password.fill('0')
                 callback(null)
             }
-        }.show()
+            show()
+        }
     }
 
     private fun restartApp() {
-        val intent = Intent(requireActivity(), requireActivity().javaClass)
+        startActivity(Intent(requireActivity(), requireActivity().javaClass).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        })
         requireActivity().finish()
-        startActivity(intent)
     }
 
     override fun onDestroyView() {

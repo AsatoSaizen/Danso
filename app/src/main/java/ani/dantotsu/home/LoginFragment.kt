@@ -2,10 +2,14 @@ package ani.dantotsu.home
 
 import android.content.Intent
 import android.os.Bundle
+import android.text.method.PasswordTransformationMethod
+import android.util.TypedValue
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.documentfile.provider.DocumentFile
 import androidx.fragment.app.Fragment
 import ani.dantotsu.R
@@ -61,13 +65,13 @@ class LoginFragment : Fragment() {
                                             salt
                                         )
                                     } catch (e: Exception) {
-                                        toast("Incorrect password")
+                                        toast(getString(R.string.incorrect_password))
                                         return@passwordAlertDialog
                                     }
                                     if (PreferencePackager.unpack(decryptedJson))
                                         restartApp()
                                 } else {
-                                    toast("Password cannot be empty")
+                                    toast(getString(R.string.password_cannot_be_empty))
                                 }
                             }
                         } else if (name.endsWith(".ani")) {
@@ -75,11 +79,11 @@ class LoginFragment : Fragment() {
                             if (PreferencePackager.unpack(decryptedJson))
                                 restartApp()
                         } else {
-                            toast("Invalid file type")
+                            toast(getString(R.string.unknown_file_type))
                         }
                     } catch (e: Exception) {
                         Logger.log(e)
-                        toast("Error importing settings")
+                        toast(getString(R.string.error_importing_settings))
                     }
                 }
             }
@@ -92,15 +96,41 @@ class LoginFragment : Fragment() {
     private fun passwordAlertDialog(callback: (CharArray?) -> Unit) {
         val password = CharArray(16).apply { fill('0') }
 
-        // Inflate the dialog layout
         val dialogView = DialogUserAgentBinding.inflate(layoutInflater).apply {
-            userAgentTextBox.hint = "Password"
+            userAgentTextBox.hint = getString(R.string.password)
             subtitle.visibility = View.VISIBLE
             subtitle.text = getString(R.string.enter_password_to_decrypt_file)
+            
+            val showPasswordToggle = TextView(requireContext()).apply {
+                text = "👁️ ${getString(R.string.show_password)}"
+                setTextColor(ContextCompat.getColor(requireContext(), R.color.brand))
+                setPadding(
+                    0, 
+                    TypedValue.applyDimension(
+                        TypedValue.COMPLEX_UNIT_DIP, 
+                        16f, 
+                        resources.displayMetrics
+                    ).toInt(), 
+                    0, 
+                    0
+                )
+                setOnClickListener {
+                    val selection = userAgentTextBox.selectionEnd
+                    if (userAgentTextBox.transformationMethod == PasswordTransformationMethod.getInstance()) {
+                        userAgentTextBox.transformationMethod = null
+                        text = "👁️ ${getString(R.string.hide_password)}"
+                    } else {
+                        userAgentTextBox.transformationMethod = PasswordTransformationMethod.getInstance()
+                        text = "👁️ ${getString(R.string.show_password)}"
+                    }
+                    userAgentTextBox.setSelection(selection)
+                }
+            }
+            userAgentContainer.addView(showPasswordToggle)
         }
 
         requireActivity().customAlertDialog().apply {
-            setTitle("Enter Password")
+            setTitle(getString(R.string.enter_password))
             setCustomView(dialogView.root)
             setPosButton(R.string.ok) {
                 val editText = dialogView.userAgentTextBox
@@ -108,7 +138,7 @@ class LoginFragment : Fragment() {
                     editText.text?.toString()?.trim()?.toCharArray(password)
                     callback(password)
                 } else {
-                    toast("Password cannot be empty")
+                    toast(getString(R.string.password_cannot_be_empty))
                 }
             }
             setNegButton(R.string.cancel) {
@@ -116,8 +146,6 @@ class LoginFragment : Fragment() {
                 callback(null)
             }
         }.show()
-
-
     }
 
     private fun restartApp() {
@@ -126,4 +154,8 @@ class LoginFragment : Fragment() {
         startActivity(intent)
     }
 
+    override fun onDestroyView() {
+        super.onDestroyView()
+        _binding = null
+    }
 }
